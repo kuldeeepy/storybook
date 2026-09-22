@@ -10,8 +10,6 @@ const transform = (source: string) => {
   const result = transformStoryFile(source, {
     needsViewportMigration: true,
     needsBackgroundsMigration: true,
-    viewportsOptions: undefined,
-    backgroundsOptions: undefined,
   });
   return result ? printCsf(result).code : null;
 };
@@ -22,7 +20,7 @@ describe('addon-globals-api story objects', () => {
       export default { title: 'Button' };
       export const Primary = () => null;
       Primary.parameters = {
-        backgrounds: { disable: true },
+        backgrounds: { values: [{ name: 'Dark', value: '#000' }] },
       };
     `;
 
@@ -30,7 +28,9 @@ describe('addon-globals-api story objects', () => {
       "export default { title: 'Button' };
       export const Primary = () => null;
       Primary.parameters = {
-        backgrounds: { disabled: true },
+        backgrounds: { options: {
+          dark: { name: 'Dark', value: '#000' }
+        } },
       };"
     `);
   });
@@ -75,7 +75,7 @@ describe('addon-globals-api story objects', () => {
       export default { title: 'Button' };
       export const Primary = {
         ...base,
-        parameters: { backgrounds: { disable: true } },
+        parameters: { backgrounds: { values: [{ name: 'Dark', value: '#000' }] } },
       };
     `;
 
@@ -83,12 +83,14 @@ describe('addon-globals-api story objects', () => {
       "export default { title: 'Button' };
       export const Primary = {
         ...base,
-        parameters: { backgrounds: { disabled: true } },
+        parameters: { backgrounds: { options: {
+          dark: { name: 'Dark', value: '#000' }
+        } } },
       };"
     `);
   });
 
-  it('leaves story objects with a shadowing spread unchanged', () => {
+  it('rejects story objects with a shadowing spread', () => {
     const source = dedent`
       export default { title: 'Button' };
       export const Primary = {
@@ -97,7 +99,7 @@ describe('addon-globals-api story objects', () => {
       };
     `;
 
-    expect(transform(source)).toBeNull();
+    expect(() => transform(source)).toThrow('the target contains spread field');
   });
 
   it('leaves an empty viewport parameter alone when only backgrounds migrate', () => {
@@ -112,13 +114,11 @@ describe('addon-globals-api story objects', () => {
       transformStoryFile(source, {
         needsViewportMigration: false,
         needsBackgroundsMigration: true,
-        viewportsOptions: undefined,
-        backgroundsOptions: undefined,
       })
     ).toBeNull();
   });
 
-  it('leaves unsafe story objects unchanged', () => {
+  it('rejects unsafe story objects', () => {
     const source = dedent`
       export default { title: 'Button' };
       export const Primary = {
@@ -127,7 +127,7 @@ describe('addon-globals-api story objects', () => {
       };
     `;
 
-    expect(transform(source)).toBeNull();
+    expect(() => transform(source)).toThrow('the target contains spread field');
   });
 
   it('keeps default orientation when it cannot write isRotated', () => {
@@ -164,29 +164,5 @@ describe('addon-globals-api story objects', () => {
 
     expect(transform(source)).toContain(`isRotated: true`);
     expect(transform(source)).toContain(`defaultOrientation: 'landscape'`);
-  });
-
-  it('removes deprecated disable when disabled already exists', () => {
-    const source = dedent`
-      export default { title: 'Button' };
-      export const Primary = {
-        parameters: { backgrounds: { disable: true, disabled: false } },
-      };
-    `;
-
-    expect(transform(source)).toContain('disabled: false');
-    expect(transform(source)).not.toMatch(/\bdisable:/);
-  });
-
-  it('removes deprecated viewport disable when disabled already exists', () => {
-    const source = dedent`
-      export default { title: 'Button' };
-      export const Primary = {
-        parameters: { viewport: { disable: true, disabled: false } },
-      };
-    `;
-
-    expect(transform(source)).toContain('disabled: false');
-    expect(transform(source)).not.toMatch(/\bdisable:/);
   });
 });
