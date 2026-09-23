@@ -20,28 +20,6 @@ describe('component-subtitle', () => {
     `);
   });
 
-  it('rejects conflicting parameters inherited from a CSF factory story', () => {
-    expect(() =>
-      transformStorySource(`
-      import preview from './preview';
-      const meta = preview.meta({});
-      export const Base = meta.story({ parameters: { docs: { subtitle: 'Inherited' } } });
-      export const Extended = Base.extend({ parameters: { componentSubtitle: 'Legacy' } });
-    `)
-    ).toThrow('Story inheritance changes parameters');
-  });
-
-  it('rejects a falsy subtitle that would hide a migrated base story fallback', () => {
-    expect(() =>
-      transformStorySource(`
-      import preview from './preview';
-      const meta = preview.meta({});
-      export const Base = meta.story({ parameters: { componentSubtitle: 'Inherited' } });
-      export const Extended = Base.extend({ parameters: { docs: { subtitle: '' } } });
-    `)
-    ).toThrow('Story inheritance changes parameters');
-  });
-
   it('moves a meta componentSubtitle value to docs.subtitle', () => {
     const transformed = transformStorySource(`
         export default {

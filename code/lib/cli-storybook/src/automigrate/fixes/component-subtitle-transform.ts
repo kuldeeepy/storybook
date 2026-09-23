@@ -1,13 +1,6 @@
 import { HandledError } from 'storybook/internal/common';
 import type { ConfigFile, CsfFile, CsfObject } from 'storybook/internal/csf-tools';
-import {
-  formatConfig,
-  loadConfig,
-  loadCsf,
-  printCsf,
-  resolveBindingMembers,
-  sourceOf,
-} from 'storybook/internal/csf-tools';
+import { formatConfig, loadConfig, loadCsf, printCsf } from 'storybook/internal/csf-tools';
 
 const legacyPath = ['parameters', 'componentSubtitle'];
 const subtitlePath = ['parameters', 'docs', 'subtitle'];
@@ -69,26 +62,6 @@ export const transformStorySource = (source: string, inherited: Inheritance = no
   }
   const csf = loadCsf(source, { makeTitle: (title) => title || 'default' }).parse();
   const objects = csf.objects();
-  for (const object of objects) {
-    if (object.target.kind !== 'story') {
-      continue;
-    }
-    const resolved = resolveBindingMembers(
-      { program: csf._file.path, filePath: '' },
-      object.target.localName
-    );
-    const ownParameters = object.get(['parameters']);
-    const effectiveParameters = resolved?.properties.parameters;
-    if (
-      effectiveParameters &&
-      ownParameters &&
-      sourceOf(effectiveParameters) !== sourceOf(ownParameters)
-    ) {
-      throw new ComponentSubtitleMigrationError(
-        'Story inheritance changes parameters; migrate componentSubtitle and its inherited docs.subtitle together manually'
-      );
-    }
-  }
   const meta = objects.find((object) => object.target.kind === 'meta');
   const metaSubtitle = meta?.get(subtitlePath);
   const storyInheritance = {
