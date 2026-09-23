@@ -332,4 +332,33 @@ describe('component-subtitle file processing', () => {
     await componentSubtitle.run({ ...storyOptions, result });
     expect(vol.toJSON()).toEqual(before);
   });
+
+  it('uses current preview inheritance before writing either file', async () => {
+    const result = await componentSubtitle.check(options);
+    assert(result && componentSubtitle.run);
+    fs.writeFileSync(
+      previewConfigPath,
+      "export default { parameters: { docs: { subtitle: 'Current' } } };"
+    );
+    const before = vol.toJSON();
+    await expect(componentSubtitle.run({ ...options, result })).rejects.toThrow(
+      'An inherited parameters.docs.subtitle value can take precedence'
+    );
+    expect(vol.toJSON()).toEqual(before);
+  });
+
+  it('uses the preview transformer when rereading a preview file', async () => {
+    fs.writeFileSync(
+      previewConfigPath,
+      "export const parameters = { componentSubtitle: 'Preview' };"
+    );
+    const result = await componentSubtitle.check(options);
+    assert(result && componentSubtitle.run);
+    await componentSubtitle.run({ ...options, result });
+    expect(fs.readFileSync(previewConfigPath, 'utf8')).toMatchInlineSnapshot(`
+      "export const parameters = { docs: {
+        subtitle: 'Preview'
+      } };"
+    `);
+  });
 });
