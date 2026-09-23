@@ -1,6 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import assert from 'node:assert/strict';
+import { readFile, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 
-import { transformPreviewSource, transformStorySource } from './component-subtitle.ts';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { JsPackageManager } from 'storybook/internal/common';
+
+import { fs, vol } from 'memfs';
+
+import {
+  componentSubtitle,
+  transformPreviewSource,
+  transformStorySource,
+} from './component-subtitle.ts';
 
 describe('component-subtitle', () => {
   it('migrates local fallbacks consistently across meta and stories', () => {
@@ -223,5 +235,101 @@ describe('component-subtitle', () => {
               export default { parameters };
             "
     `);
+  });
+});
+
+vi.mock('node:fs/promises', { spy: true });
+
+describe('component-subtitle file processing', () => {
+  afterEach(() => {
+    vi.mocked(readFile).mockRestore();
+    vi.mocked(writeFile).mockRestore();
+  });
+  const previewConfigPath = resolve('.storybook/preview.ts');
+  const storyPath = resolve('Button.stories.ts');
+  const options = {
+    packageManager: vi.mocked(JsPackageManager.prototype),
+    mainConfig: { stories: [] },
+    mainConfigPath: resolve('.storybook/main.ts'),
+    configDir: resolve('.storybook'),
+    storybookVersion: '11.0.0',
+    hasCsfFactoryPreview: false,
+    previewConfigPath,
+    storiesPaths: [storyPath],
+  };
+
+  beforeEach(() => {
+    vol.reset();
+    let activeOperations = 0;
+    vi.mocked(readFile).mockImplementation(async (file) => {
+      expect(++activeOperations).toBe(1);
+      try {
+        return (await fs.promises.readFile(file.toString(), 'utf8')).toString();
+      } finally {
+        activeOperations--;
+      }
+    });
+    vi.mocked(writeFile).mockImplementation(async (file, data) => {
+      expect(++activeOperations).toBe(1);
+      try {
+        await fs.promises.writeFile(file.toString(), data.toString());
+      } finally {
+        activeOperations--;
+      }
+    });
+    vol.fromJSON({
+      [previewConfigPath]: "export default { parameters: { componentSubtitle: 'Preview' } };",
+      [storyPath]: "export default { parameters: { componentSubtitle: 'Story' } };",
+    });
+  });
+
+  it('retains paths only and migrates current contents with sequential reads and writes', async () => {
+    const result = await componentSubtitle.check(options);
+    expect(result).toEqual({ filesToChange: [previewConfigPath, storyPath], errors: [] });
+    assert(result && componentSubtitle.run);
+    fs.writeFileSync(storyPath, "export default { parameters: { componentSubtitle: 'Edited' } };");
+    await componentSubtitle.run({ ...options, result });
+    expect(fs.readFileSync(previewConfigPath, 'utf8')).toMatchInlineSnapshot(`
+      "export default { parameters: { docs: {
+        subtitle: 'Preview'
+      } } };"
+    `);
+    expect(fs.readFileSync(storyPath, 'utf8')).toMatchInlineSnapshot(`
+      "export default { parameters: { docs: {
+        subtitle: 'Edited'
+      } } };"
+    `);
+  });
+
+  it('leaves files unchanged for dry runs and check errors', async () => {
+    const before = vol.toJSON();
+    const result = await componentSubtitle.check(options);
+    assert(result && componentSubtitle.run);
+    await componentSubtitle.run({ ...options, result, dryRun: true });
+    expect(vol.toJSON()).toEqual(before);
+    fs.writeFileSync(
+      storyPath,
+      "export default { parameters: { ...shared, componentSubtitle: 'Story' } };"
+    );
+    const unsafe = vol.toJSON();
+    const unsafeResult = await componentSubtitle.check(options);
+    assert(unsafeResult);
+    await expect(componentSubtitle.run({ ...options, result: unsafeResult })).rejects.toThrow(
+      'Could not migrate parameters.componentSubtitle automatically'
+    );
+    expect(vol.toJSON()).toEqual(unsafe);
+  });
+
+  it('skips files already migrated between check and run without requiring a preview', async () => {
+    const storyOptions = { ...options, previewConfigPath: undefined };
+    const result = await componentSubtitle.check(storyOptions);
+    assert(result && componentSubtitle.run);
+    fs.writeFileSync(
+      storyPath,
+      "export default { parameters: { docs: { subtitle: 'Updated' } } };"
+    );
+    const before = vol.toJSON();
+    await componentSubtitle.run({ ...storyOptions, result });
+    expect(vol.toJSON()).toEqual(before);
   });
 });
