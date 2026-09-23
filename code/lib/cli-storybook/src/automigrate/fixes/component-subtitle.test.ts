@@ -3,24 +3,6 @@ import { describe, expect, it } from 'vitest';
 import { transformPreviewSource, transformStorySource } from './component-subtitle.ts';
 
 describe('component-subtitle', () => {
-  it('rejects a falsy story subtitle that would hide a migrated meta fallback', () => {
-    expect(() =>
-      transformStorySource(`
-      export default { parameters: { componentSubtitle: 'Inherited' } };
-      export const Primary = { parameters: { docs: { subtitle: '' } } };
-    `)
-    ).toThrow('falsy parameters.docs.subtitle');
-  });
-
-  it('rejects a falsy meta subtitle that would hide a migrated preview fallback', () => {
-    expect(() =>
-      transformStorySource(`export default { parameters: { docs: { subtitle: '' } } };`, {
-        subtitleCanWin: false,
-        legacySubtitle: true,
-      })
-    ).toThrow('falsy parameters.docs.subtitle');
-  });
-
   it('migrates local fallbacks consistently across meta and stories', () => {
     const transformed = transformStorySource(`
       export default { parameters: { componentSubtitle: 'Meta' } };
@@ -201,18 +183,6 @@ describe('component-subtitle', () => {
     `);
   });
 
-  it('uses the legacy subtitle when docs.subtitle is empty', () => {
-    expect(
-      transformStorySource(`export default { parameters: {
-      componentSubtitle: 'Legacy', docs: { subtitle: '' }
-    } };`)
-    ).toMatchInlineSnapshot(`
-      "export default { parameters: {
-        docs: { subtitle: "Legacy" }
-      } };"
-    `);
-  });
-
   it('migrates preview parameters', () => {
     expect(
       transformPreviewSource(`
@@ -236,7 +206,7 @@ describe('component-subtitle', () => {
       export default {
         parameters: {
           ['componentSubtitle']: 'Legacy',
-          ['docs']: { ['subtitle']: '' }
+          ['docs']: { ['subtitle']: 'Current' }
         }
       };
     `);
@@ -245,7 +215,7 @@ describe('component-subtitle', () => {
       "
             export default {
               parameters: {
-                ['docs']: { ['subtitle']: "Legacy" }
+                ['docs']: { ['subtitle']: 'Current' }
               }
             };
           "

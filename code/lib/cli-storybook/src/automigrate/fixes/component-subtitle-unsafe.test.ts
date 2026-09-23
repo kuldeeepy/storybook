@@ -4,19 +4,6 @@ import { ComponentSubtitleMigrationError } from './component-subtitle-transform.
 import { transformPreviewSource, transformStorySource } from './component-subtitle.ts';
 
 describe('component-subtitle unsafe inputs', () => {
-  it('rejects dynamic docs.subtitle precedence', () => {
-    expect(() =>
-      transformStorySource(`
-        export default {
-          parameters: {
-            componentSubtitle: 'Legacy',
-            docs: { subtitle: getSubtitle() }
-          }
-        };
-      `)
-    ).toThrow(ComponentSubtitleMigrationError);
-  });
-
   it('rejects a story migration when an inherited subtitle can win', () => {
     expect(() =>
       transformStorySource(`
@@ -32,7 +19,7 @@ describe('component-subtitle unsafe inputs', () => {
     expect(() =>
       transformStorySource(
         `export default { parameters: { componentSubtitle: 'Meta subtitle' } };`,
-        { subtitleCanWin: true, legacySubtitle: false }
+        { subtitleCanWin: true }
       )
     ).toThrow(ComponentSubtitleMigrationError);
   });

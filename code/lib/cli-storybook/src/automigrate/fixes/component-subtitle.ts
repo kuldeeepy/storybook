@@ -26,7 +26,7 @@ export const componentSubtitle: Fix<ComponentSubtitleOptions> = {
     const errors: Array<{ file: string; message: string }> = [];
     let applicable = false;
     const files = previewConfigPath ? [previewConfigPath, ...storiesPaths] : storiesPaths;
-    let inheritance = { subtitleCanWin: false, legacySubtitle: false };
+    let inheritance = { subtitleCanWin: false };
 
     for (const file of files) {
       try {
