@@ -13,7 +13,7 @@ import {
 export { transformPreviewSource, transformStorySource } from './component-subtitle-transform.ts';
 
 interface ComponentSubtitleOptions {
-  transformedFiles: Array<{ file: string; source: string }>;
+  filesToChange: string[];
   errors: Array<{ file: string; message: string }>;
 }
 
@@ -22,7 +22,7 @@ export const componentSubtitle: Fix<ComponentSubtitleOptions> = {
   link: 'https://github.com/storybookjs/storybook/blob/next/MIGRATION.md#parameterscomponentsubtitle-removed',
 
   async check({ previewConfigPath, storiesPaths }) {
-    const transformedFiles: Array<{ file: string; source: string }> = [];
+    const filesToChange: string[] = [];
     const errors: Array<{ file: string; message: string }> = [];
     let applicable = false;
     const files = previewConfigPath ? [previewConfigPath, ...storiesPaths] : storiesPaths;
@@ -40,7 +40,7 @@ export const componentSubtitle: Fix<ComponentSubtitleOptions> = {
             : transformStorySource(source, inheritance);
         if (transformed) {
           applicable = true;
-          transformedFiles.push({ file, source: transformed });
+          filesToChange.push(file);
         }
       } catch (error) {
         applicable ||= error instanceof ComponentSubtitleMigrationError;
@@ -48,14 +48,14 @@ export const componentSubtitle: Fix<ComponentSubtitleOptions> = {
       }
     }
 
-    return applicable ? { transformedFiles, errors } : null;
+    return applicable ? { filesToChange, errors } : null;
   },
 
   prompt() {
     return `Move deprecated ${picocolors.cyan('parameters.componentSubtitle')} values to ${picocolors.cyan('parameters.docs.subtitle')}`;
   },
 
-  async run({ dryRun, result: { transformedFiles, errors } }) {
+  async run({ dryRun, previewConfigPath, result: { filesToChange, errors } }) {
     if (errors.length > 0) {
       throw new ComponentSubtitleMigrationError(
         `Could not migrate parameters.componentSubtitle automatically:\n${errors
@@ -64,8 +64,22 @@ export const componentSubtitle: Fix<ComponentSubtitleOptions> = {
       );
     }
 
-    if (!dryRun) {
-      await Promise.all(transformedFiles.map(({ file, source }) => writeFile(file, source)));
+    if (dryRun) {
+      return;
+    }
+
+    const inheritance = previewConfigPath
+      ? previewSubtitleInheritance(await readFile(previewConfigPath, 'utf-8'))
+      : { subtitleCanWin: false };
+    for (const file of filesToChange) {
+      const source = await readFile(file, 'utf-8');
+      const transformed =
+        file === previewConfigPath
+          ? transformPreviewSource(source)
+          : transformStorySource(source, inheritance);
+      if (transformed) {
+        await writeFile(file, transformed);
+      }
     }
   },
 };
