@@ -13,8 +13,8 @@ import {
 export { transformPreviewSource, transformStorySource } from './component-subtitle-transform.ts';
 
 interface ComponentSubtitleOptions {
-  files: string[];
-  previewConfigPath?: string;
+  transformedFiles: Array<{ file: string; source: string }>;
+  errors: Array<{ file: string; message: string }>;
 }
 
 export const componentSubtitle: Fix<ComponentSubtitleOptions> = {
@@ -22,67 +22,40 @@ export const componentSubtitle: Fix<ComponentSubtitleOptions> = {
   link: 'https://github.com/storybookjs/storybook/blob/next/MIGRATION.md#parameterscomponentsubtitle-removed',
 
   async check({ previewConfigPath, storiesPaths }) {
-    const files = [...storiesPaths];
-    if (previewConfigPath) {
-      files.unshift(previewConfigPath);
+    const transformedFiles: Array<{ file: string; source: string }> = [];
+    const errors: Array<{ file: string; message: string }> = [];
+    let applicable = false;
+    const files = previewConfigPath ? [previewConfigPath, ...storiesPaths] : storiesPaths;
+    let inheritance = { subtitleCanWin: false, legacySubtitle: false };
+
+    for (const file of files) {
+      try {
+        const source = await readFile(file, 'utf-8');
+        if (file === previewConfigPath) {
+          inheritance = previewSubtitleInheritance(source);
+        }
+        const transformed =
+          file === previewConfigPath
+            ? transformPreviewSource(source)
+            : transformStorySource(source, inheritance);
+        if (transformed) {
+          applicable = true;
+          transformedFiles.push({ file, source: transformed });
+        }
+      } catch (error) {
+        applicable ||= error instanceof ComponentSubtitleMigrationError;
+        errors.push({ file, message: error instanceof Error ? error.message : String(error) });
+      }
     }
-    const matchingFiles = (
-      await Promise.all(
-        files.map(async (file) => {
-          try {
-            const source = await readFile(file, 'utf-8');
-            const transformed =
-              file === previewConfigPath
-                ? transformPreviewSource(source)
-                : transformStorySource(source);
-            return transformed ? file : null;
-          } catch (error) {
-            return error instanceof ComponentSubtitleMigrationError ? file : null;
-          }
-        })
-      )
-    ).filter((file): file is string => file !== null);
-    return matchingFiles.length > 0 ? { files, previewConfigPath } : null;
+
+    return applicable ? { transformedFiles, errors } : null;
   },
 
   prompt() {
     return `Move deprecated ${picocolors.cyan('parameters.componentSubtitle')} values to ${picocolors.cyan('parameters.docs.subtitle')}`;
   },
 
-  async run({ dryRun, result }) {
-    const transformedFiles: Array<{ file: string; source: string }> = [];
-    const errors: Array<{ file: string; message: string }> = [];
-    let inheritance = { subtitleCanWin: false, legacySubtitle: false };
-
-    if (result.previewConfigPath) {
-      try {
-        inheritance = previewSubtitleInheritance(await readFile(result.previewConfigPath, 'utf-8'));
-      } catch (error) {
-        errors.push({
-          file: result.previewConfigPath,
-          message: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-
-    for (const file of result.files) {
-      if (errors.some((entry) => entry.file === file)) {
-        continue;
-      }
-      try {
-        const source = await readFile(file, 'utf-8');
-        const transformed =
-          file === result.previewConfigPath
-            ? transformPreviewSource(source)
-            : transformStorySource(source, inheritance);
-        if (transformed) {
-          transformedFiles.push({ file, source: transformed });
-        }
-      } catch (error) {
-        errors.push({ file, message: error instanceof Error ? error.message : String(error) });
-      }
-    }
-
+  async run({ dryRun, result: { transformedFiles, errors } }) {
     if (errors.length > 0) {
       throw new ComponentSubtitleMigrationError(
         `Could not migrate parameters.componentSubtitle automatically:\n${errors
