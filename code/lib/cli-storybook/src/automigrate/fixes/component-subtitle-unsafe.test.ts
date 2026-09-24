@@ -15,6 +15,21 @@ describe('component-subtitle unsafe inputs', () => {
     ).toThrow(ComponentSubtitleMigrationError);
   });
 
+  it('rejects a falsy descendant subtitle that needs the inherited legacy fallback', () => {
+    expect(() => transformStorySource(`
+      export default { parameters: { componentSubtitle: 'Meta' } };
+      export const Primary = { parameters: { docs: { subtitle: '' } } };
+    `)).toThrow(ComponentSubtitleMigrationError);
+  });
+
+  it('rejects an unresolved existing subtitle instead of dropping the fallback', () => {
+    expect(() => transformStorySource(`
+      export default { parameters: {
+        componentSubtitle: 'Legacy', docs: { subtitle: getSubtitle() }
+      } };
+    `)).toThrow(ComponentSubtitleMigrationError);
+  });
+
   it('rejects a meta migration when a preview subtitle can win', () => {
     expect(() =>
       transformStorySource(
@@ -81,10 +96,11 @@ describe('component-subtitle unsafe inputs', () => {
     ).toThrow(ComponentSubtitleMigrationError);
   });
 
-  it('rejects a componentSubtitle declared only through a parameters spread', () => {
+  it('rejects a shared componentSubtitle parameters spread', () => {
     expect(() =>
       transformStorySource(`
         const legacyParameters = { componentSubtitle: 'Legacy' };
+        consume(legacyParameters);
         export default {
           parameters: { ...legacyParameters }
         };
@@ -120,19 +136,20 @@ describe('component-subtitle unsafe inputs', () => {
     expect(() =>
       transformStorySource(`
         const legacyParameters = { componentSubtitle: 'Legacy' };
+        consume(legacyParameters);
         const parametersAlias = legacyParameters;
         const secondAlias = parametersAlias;
         export default { parameters: { ...secondAlias } };
       `)
     ).toThrow(ComponentSubtitleMigrationError);
 
-    expect(
+    expect(() =>
       transformStorySource(`
         const firstAlias = secondAlias;
         const secondAlias = firstAlias;
-        export default { parameters: { ...firstAlias } };
+        export default { parameters: { ...firstAlias, componentSubtitle: 'Legacy' } };
       `)
-    ).toBeNull();
+    ).toThrow(ComponentSubtitleMigrationError);
   });
 
   it('rejects componentSubtitle accessors and methods', () => {
@@ -249,6 +266,7 @@ describe('component-subtitle unsafe inputs', () => {
     expect(() =>
       transformPreviewSource(`
         const legacyParameters = { componentSubtitle: 'Legacy' };
+        consume(legacyParameters);
         export default definePreview({
           parameters: { ...legacyParameters }
         });

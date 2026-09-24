@@ -347,6 +347,28 @@ describe('component-subtitle file processing', () => {
     expect(vol.toJSON()).toEqual(before);
   });
 
+  it('writes nothing when a later file becomes unsafe after check', async () => {
+    const result = await componentSubtitle.check(options);
+    assert(result && componentSubtitle.run);
+    fs.writeFileSync(storyPath,
+      "export default { parameters: { ...shared, componentSubtitle: 'Story' } };"
+    );
+    const before = vol.toJSON();
+    await expect(componentSubtitle.run({ ...options, result })).rejects.toThrow();
+    expect(vol.toJSON()).toEqual(before);
+  });
+
+  it('checks descendant subtitles in files without a legacy token', async () => {
+    fs.writeFileSync(storyPath,
+      "export default { parameters: { docs: { subtitle: '' } } };"
+    );
+    const before = vol.toJSON();
+    const result = await componentSubtitle.check(options);
+    assert(result && componentSubtitle.run);
+    await expect(componentSubtitle.run({ ...options, result })).rejects.toThrow();
+    expect(vol.toJSON()).toEqual(before);
+  });
+
   it('uses the preview transformer when rereading a preview file', async () => {
     fs.writeFileSync(
       previewConfigPath,
