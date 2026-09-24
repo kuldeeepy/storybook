@@ -341,6 +341,23 @@ describe('component-subtitle file processing', () => {
     expect(await componentSubtitle.check({ ...options, previewConfigPath: undefined })).toBeNull();
   });
 
+  it('schedules the migration only when an upgrade crosses SB11', async () => {
+    expect(
+      await componentSubtitle.check({
+        ...options,
+        isUpgrade: true,
+        beforeVersion: '10.6.0',
+      })
+    ).toEqual({ filesToChange: [previewConfigPath, storyPath], errors: [] });
+    expect(
+      await componentSubtitle.check({
+        ...options,
+        isUpgrade: true,
+        beforeVersion: '11.0.0',
+      })
+    ).toBeNull();
+  });
+
   it('uses current preview inheritance before writing either file', async () => {
     const result = await componentSubtitle.check(options);
     assert(result && componentSubtitle.run);

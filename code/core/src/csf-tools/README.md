@@ -75,3 +75,9 @@ These editors share the file's change tracking and diagnostics and expose the sa
 `mutationDiagnostics`, and `print()` for either format. Apply the same `CsfObject` operations to
 those editors and print only when the file changed without diagnostics. Each editor's `target`
 identifies its annotation level; migrations remain responsible for inheritance semantics.
+
+CLI automigrations can use `createAnnotationTransformRunner` from
+`automigrate/helpers/annotation-transform`. It reads a preview config followed by deduplicated story
+files, applies one object transform with `{ kind, target, inherited }` context, and creates a fresh
+plan for both check and run. It does not write a source file when any planned transform reports a
+diagnostic. The runner does not provide filesystem-crash rollback.

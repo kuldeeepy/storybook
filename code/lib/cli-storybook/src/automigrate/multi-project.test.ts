@@ -96,6 +96,12 @@ describe('multi-project automigrations', () => {
       expect(results[1].reports.every((report) => report.status === 'check_succeeded')).toBe(true);
       expect(results[2].fix.id).toBe('fix3');
       expect(results[2].reports.every((report) => report.status === 'not_applicable')).toBe(true);
+      expect(fix1.check).toHaveBeenCalledWith(
+        expect.objectContaining({
+          beforeVersion: '7.0.0',
+          isUpgrade: true,
+        })
+      );
     });
 
     it('should deduplicate automigrations across projects', async () => {

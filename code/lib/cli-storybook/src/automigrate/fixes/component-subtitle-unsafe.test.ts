@@ -136,7 +136,7 @@ describe('component-subtitle unsafe inputs', () => {
     ).toThrow(ComponentSubtitleMigrationError);
   });
 
-  it('follows parameter spread aliases and terminates cyclic aliases', () => {
+  it('rejects shared parameter aliases and a cyclic spread reference', () => {
     expect(() =>
       transformStorySource(`
         const legacyParameters = { componentSubtitle: 'Legacy' };

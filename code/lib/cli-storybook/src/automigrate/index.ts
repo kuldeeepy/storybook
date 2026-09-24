@@ -49,6 +49,7 @@ export const doAutomigrate = async (options: AutofixOptionsFromCLI) => {
     mainConfigPath,
     previewConfigPath,
     versionInstalled,
+    beforeVersion,
     configDir,
     packageManager,
     storiesPaths,
@@ -66,6 +67,7 @@ export const doAutomigrate = async (options: AutofixOptionsFromCLI) => {
     ...options,
     packageManager,
     storybookVersion: versionInstalled || versions.storybook,
+    beforeVersion,
     mainConfigPath,
     mainConfig,
     previewConfigPath,
@@ -239,6 +241,7 @@ type RunFixesOptions = {
   storybookVersion: string;
   isUpgrade?: boolean;
   hasCsfFactoryPreview: boolean;
+  beforeVersion?: string;
 };
 
 export async function runFixes({
@@ -256,6 +259,8 @@ export async function runFixes({
   storybookVersion,
   storiesPaths,
   hasCsfFactoryPreview,
+  beforeVersion,
+  isUpgrade,
 }: RunFixesOptions): Promise<{
   preCheckFailure?: PreCheckFailure;
   fixResults: Record<FixId, FixStatus>;
@@ -283,6 +288,8 @@ export async function runFixes({
         mainConfigPath,
         storiesPaths,
         hasCsfFactoryPreview,
+        beforeVersion,
+        isUpgrade,
         requested: fixId === f.id,
       });
       logger.debug(`End of ${picocolors.cyan(f.id)} migration checks`);

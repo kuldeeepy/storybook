@@ -112,6 +112,7 @@ export async function collectAutomigrationsAcrossProjects(
           mainConfig: project.mainConfig,
           storybookVersion: project.storybookVersion,
           beforeVersion: project.beforeVersion,
+          isUpgrade: true,
           requested: requestedFixIds?.includes(fix.id),
           previewConfigPath: project.previewConfigPath,
           mainConfigPath: project.mainConfigPath,

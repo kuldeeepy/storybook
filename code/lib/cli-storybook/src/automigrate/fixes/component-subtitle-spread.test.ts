@@ -58,13 +58,11 @@ export default { parameters: { ...legacyParameters } };`;
       } };`;
       const preview = transformPreviewSource(source);
       const stories = transformStorySource(source);
-      for (const output of [preview, stories]) {
+      for (const [kind, output] of Object.entries({ preview, stories }) as Array<
+        ['preview' | 'stories', string]
+      >) {
         expect(
-          loadAnnotationFile(output!, 'preview').objects[0].getValue([
-            'parameters',
-            'docs',
-            'subtitle',
-          ])
+          loadAnnotationFile(output, kind).objects[0].getValue(['parameters', 'docs', 'subtitle'])
         ).toBe('Legacy');
       }
       return { preview, stories };
