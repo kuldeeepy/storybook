@@ -10,18 +10,22 @@ const transforms = { preview: transformPreviewSource, stories: transformStorySou
 describe('component-subtitle spreads', () => {
   it('rejects an unresolved spread that may supply docs.subtitle', () => {
     for (const transform of Object.values(transforms)) {
-      expect(() => transform(`export default {
+      expect(() =>
+        transform(`export default {
         parameters: { ...parameters, componentSubtitle: 'Legacy' }
-      };`)).toThrow(ComponentSubtitleMigrationError);
+      };`)
+      ).toThrow(ComponentSubtitleMigrationError);
     }
   });
 
   it('migrates a subtitle declared through a local parameters spread', () => {
     const source = `const legacyParameters = { componentSubtitle: 'Legacy' };
 export default { parameters: { ...legacyParameters } };`;
-    expect(Object.fromEntries(Object.entries(transforms).map(([kind, transform]) =>
-      [kind, transform(source)]
-    ))).toMatchInlineSnapshot(`
+    expect(
+      Object.fromEntries(
+        Object.entries(transforms).map(([kind, transform]) => [kind, transform(source)])
+      )
+    ).toMatchInlineSnapshot(`
       {
         "preview": "const legacyParameters = { docs: {
         subtitle: 'Legacy'
@@ -37,11 +41,13 @@ export default { parameters: { ...legacyParameters } };`;
 
   it('rejects a local spread alias with another consumer', () => {
     for (const transform of Object.values(transforms)) {
-      expect(() => transform(`
+      expect(() =>
+        transform(`
         const parameters = { componentSubtitle: 'Legacy' };
         consume(parameters);
         export default { parameters: { ...parameters } };
-      `)).toThrow(ComponentSubtitleMigrationError);
+      `)
+      ).toThrow(ComponentSubtitleMigrationError);
     }
   });
 
@@ -53,9 +59,13 @@ export default { parameters: { ...legacyParameters } };`;
       const preview = transformPreviewSource(source);
       const stories = transformStorySource(source);
       for (const output of [preview, stories]) {
-        expect(loadAnnotationFile(output!, 'preview').objects[0].getValue(
-          ['parameters', 'docs', 'subtitle']
-        )).toBe('Legacy');
+        expect(
+          loadAnnotationFile(output!, 'preview').objects[0].getValue([
+            'parameters',
+            'docs',
+            'subtitle',
+          ])
+        ).toBe('Legacy');
       }
       return { preview, stories };
     });

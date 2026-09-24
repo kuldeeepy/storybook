@@ -16,18 +16,22 @@ describe('component-subtitle unsafe inputs', () => {
   });
 
   it('rejects a falsy descendant subtitle that needs the inherited legacy fallback', () => {
-    expect(() => transformStorySource(`
+    expect(() =>
+      transformStorySource(`
       export default { parameters: { componentSubtitle: 'Meta' } };
       export const Primary = { parameters: { docs: { subtitle: '' } } };
-    `)).toThrow(ComponentSubtitleMigrationError);
+    `)
+    ).toThrow(ComponentSubtitleMigrationError);
   });
 
   it('rejects an unresolved existing subtitle instead of dropping the fallback', () => {
-    expect(() => transformStorySource(`
+    expect(() =>
+      transformStorySource(`
       export default { parameters: {
         componentSubtitle: 'Legacy', docs: { subtitle: getSubtitle() }
       } };
-    `)).toThrow(ComponentSubtitleMigrationError);
+    `)
+    ).toThrow(ComponentSubtitleMigrationError);
   });
 
   it('rejects a meta migration when a preview subtitle can win', () => {

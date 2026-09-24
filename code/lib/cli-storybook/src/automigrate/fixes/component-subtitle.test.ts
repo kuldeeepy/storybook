@@ -350,7 +350,8 @@ describe('component-subtitle file processing', () => {
   it('writes nothing when a later file becomes unsafe after check', async () => {
     const result = await componentSubtitle.check(options);
     assert(result && componentSubtitle.run);
-    fs.writeFileSync(storyPath,
+    fs.writeFileSync(
+      storyPath,
       "export default { parameters: { ...shared, componentSubtitle: 'Story' } };"
     );
     const before = vol.toJSON();
@@ -359,9 +360,7 @@ describe('component-subtitle file processing', () => {
   });
 
   it('checks descendant subtitles in files without a legacy token', async () => {
-    fs.writeFileSync(storyPath,
-      "export default { parameters: { docs: { subtitle: '' } } };"
-    );
+    fs.writeFileSync(storyPath, "export default { parameters: { docs: { subtitle: '' } } };");
     const before = vol.toJSON();
     const result = await componentSubtitle.check(options);
     assert(result && componentSubtitle.run);

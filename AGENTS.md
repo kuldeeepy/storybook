@@ -159,6 +159,12 @@ When you need a pkg.pr.new canary, follow [`.agents/skills/canary/SKILL.md`](.ag
 
 These usually start long-running development servers and are the wrong default for agents.
 
+## Automigration editors
+
+Use `loadAnnotationFile` from `storybook/internal/csf-tools` when a migration edits both preview
+and story annotations. See [the CSF tools guide](code/core/src/csf-tools/README.md) for the shared
+object editor, printing, and safety diagnostics. Keep migration-specific inheritance rules in the migration.
+
 ## Repository skills
 
 - Canonical contributor skills live in `.agents/skills/`; `.claude/skills/` contains references to them.

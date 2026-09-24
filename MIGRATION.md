@@ -592,6 +592,20 @@ export default {
 };
 ```
 
+The migration also follows a single-use local object literal through a sole spread, such as
+`parameters: { ...localParameters }`. Shared or reassigned bindings and unresolved spreads require
+manual changes. An unresolved spread may supply an existing `docs.subtitle`, even when
+`componentSubtitle` appears after the spread.
+
+A truthy `docs.subtitle` keeps its value. For a statically known falsy value such as `''`, `false`,
+`0`, `null`, or `undefined`, the migration preserves the legacy fallback instead. It reports an
+error when it cannot prove this choice or preserve subtitle inheritance between preview, meta,
+and stories. Check descendant subtitle overrides when moving a preview or meta fallback manually.
+
+If any file fails the safety check, the migration reports the affected files before writing
+changes. It checks current contents again when you run it. Resolve the reported cases manually,
+then rerun the command to migrate the remaining files.
+
 ### Docs Code panel enabled by default
 
 When `@storybook/addon-docs` is installed, the Code panel is now available for stories without setting `parameters.docs.codePanel` to `true`.

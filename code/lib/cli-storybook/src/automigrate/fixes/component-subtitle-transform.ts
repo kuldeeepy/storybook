@@ -7,7 +7,7 @@ const subtitlePath = ['parameters', 'docs', 'subtitle'];
 
 export class ComponentSubtitleMigrationError extends HandledError {}
 
-type Inheritance = { subtitleCanWin: boolean };
+type Inheritance = { subtitleCanWin: boolean; legacyCanBeInherited?: boolean };
 const noInheritance: Inheritance = { subtitleCanWin: false };
 
 const checkDiagnostics = (file: ReturnType<typeof loadAnnotationFile>) => {
@@ -21,11 +21,20 @@ const migrate = (object: CsfObject, inherited: Inheritance) => {
   const legacy = object.get(legacyPath);
   const subtitle = object.get(subtitlePath);
   if (!legacy) {
+    if (inherited.legacyCanBeInherited && subtitle && !object.getValue(subtitlePath)) {
+      throw new ComponentSubtitleMigrationError(
+        'A descendant parameters.docs.subtitle can hide an inherited componentSubtitle fallback'
+      );
+    }
     return;
   }
 
   if (subtitle) {
+    const subtitleValue = object.getValue(subtitlePath);
     object.getValue(legacyPath);
+    if (!subtitleValue) {
+      object.set(subtitlePath, legacy);
+    }
     object.remove(legacyPath);
   } else {
     if (inherited.subtitleCanWin) {
@@ -40,9 +49,12 @@ const migrate = (object: CsfObject, inherited: Inheritance) => {
 
 export const previewSubtitleInheritance = (source: string): Inheritance => {
   const file = loadAnnotationFile(source, 'preview');
-  const subtitle = file.objects[0]?.get(subtitlePath);
+  const root = file.objects[0];
+  const subtitle = root?.get(subtitlePath);
+  const legacy = root?.get(legacyPath);
   return {
     subtitleCanWin: Boolean(subtitle) || file.mutationDiagnostics.length > 0,
+    legacyCanBeInherited: Boolean(legacy),
   };
 };
 
@@ -51,7 +63,7 @@ export const transformAnnotationSource = (
   kind: AnnotationFileKind,
   inherited: Inheritance = noInheritance
 ) => {
-  if (!source.includes('componentSubtitle')) {
+  if (!source.includes('componentSubtitle') && !inherited.legacyCanBeInherited) {
     return null;
   }
   const file = loadAnnotationFile(source, kind);
@@ -61,6 +73,7 @@ export const transformAnnotationSource = (
   const rootSubtitle = root?.get(subtitlePath);
   const storyInheritance = {
     subtitleCanWin: Boolean(rootSubtitle) || inherited.subtitleCanWin,
+    legacyCanBeInherited: Boolean(root?.get(legacyPath)) || inherited.legacyCanBeInherited,
   };
   if (root) {
     migrate(root, kind === 'preview' ? noInheritance : inherited);
