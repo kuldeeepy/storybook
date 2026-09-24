@@ -4,6 +4,7 @@ import {
   type ProjectAutomigrationData,
   collectAutomigrationsAcrossProjects,
   promptForAutomigrations,
+  runAutomigrationsForProjects,
 } from './multi-project.ts';
 import type { Fix } from './types.ts';
 
@@ -13,6 +14,11 @@ vi.mock('storybook/internal/node-logger', async (importOriginal) => {
     prompt: {
       multiselect: vi.fn(),
       error: vi.fn(),
+      taskLog: vi.fn(() => ({
+        message: vi.fn(),
+        success: vi.fn(),
+        error: vi.fn(),
+      })),
     },
     logger: {
       log: vi.fn(),
@@ -385,6 +391,32 @@ describe('multi-project automigrations', () => {
       expect(logSpy).toHaveBeenCalledWith(
         'Detected automigrations (dry run - no changes will be made):'
       );
+    });
+  });
+
+  describe('runAutomigrationsForProjects', () => {
+    it('runs a multi-project fix once with every selected project', async () => {
+      const project1 = createMockProject('/project1/.storybook');
+      const project2 = createMockProject('/project2/.storybook');
+      const run = vi.fn();
+      const runAcrossProjects = vi.fn();
+      const fix = createMockFix('batch-fix', {}, { run, runAcrossProjects });
+      const automigration = {
+        fix,
+        reports: [
+          asAutomigration(fix, project1).reports[0],
+          asAutomigration(fix, project2).reports[0],
+        ],
+      };
+
+      await runAutomigrationsForProjects([automigration], {
+        automigrations: [automigration],
+        yes: true,
+      });
+
+      expect(runAcrossProjects).toHaveBeenCalledOnce();
+      expect(runAcrossProjects.mock.calls[0][0]).toHaveLength(2);
+      expect(run).not.toHaveBeenCalled();
     });
   });
 });

@@ -66,6 +66,7 @@ type BaseFix<ResultType = any> = {
   /** Whether the automigration is selected by default when the user is prompted. */
   defaultSelected?: boolean;
   link?: string;
+  runAcrossProjects?: (options: RunOptions<ResultType>[]) => Promise<void>;
 };
 
 type PromptType<ResultType = any, T = Prompt> =

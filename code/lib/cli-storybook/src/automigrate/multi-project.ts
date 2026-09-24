@@ -9,6 +9,7 @@ import type { CollectProjectsSuccessResult } from '../util.ts';
 import { resolveRequestedFeatures } from './fixes/experimental-features.ts';
 import { allFixes } from './fixes/index.ts';
 import { rnstorybookConfig } from './fixes/rnstorybook-config.ts';
+import { runFixesAcrossProjects } from './helpers/run-fixes-across-projects.ts';
 import type { CheckOptions, Fix, FixId, RunOptions } from './types.ts';
 import { FixStatus } from './types.ts';
 import { RN_STORYBOOK_DIR } from '../../../../core/src/shared/constants/config-folder.ts';
@@ -74,14 +75,12 @@ export async function collectAutomigrationsAcrossProjects(
   ) {
     const existing = automigrationMap.get(fix.id);
     if (existing) {
-      // Add project to existing automigration
       existing.reports.push({
         project,
         result,
         status,
       });
     } else {
-      // Create new automigration entry
       automigrationMap.set(fix.id, {
         fix,
         reports: [
@@ -95,7 +94,6 @@ export async function collectAutomigrationsAcrossProjects(
     }
   }
 
-  // Run check for each fix on each project
   for (const project of projects) {
     const projectName = shortenPath(project.configDir);
 
@@ -143,7 +141,6 @@ export async function collectAutomigrationsAcrossProjects(
   const applicableAutomigrations = allAutomigrations.filter((am) =>
     am.reports.every((rep) => rep.status !== 'not_applicable')
   );
-  // Single pass through detectedAutomigrations to build both arrays
   const { successAutomigrations, failedAutomigrations } = applicableAutomigrations.reduce(
     (acc, { fix, reports }) => {
       const successReports = reports.filter((report) => report.status === 'check_succeeded');
@@ -190,7 +187,6 @@ export async function collectAutomigrationsAcrossProjects(
   return allAutomigrations;
 }
 
-// Format project directories relative to git root
 const formatProjectDirs = (list: AutomigrationCheckResult['reports']) => {
   const amountOfProjectsShown = 1;
   const relativeDirs = list
@@ -235,7 +231,6 @@ export async function promptForAutomigrations(
     return selected;
   }
 
-  // Create choices for multiselect prompt
   const choices = automigrations.map((am) => {
     const hint = [];
 
@@ -266,12 +261,9 @@ export async function promptForAutomigrations(
   return automigrations.filter((am) => selectedIds.includes(am.fix.id));
 }
 
-// Group automigrations by project
-type ConfigDir = string;
-type ErrorMessage = string;
 export type AutomigrationResult = {
   automigrationStatuses: Record<FixId, FixStatus>;
-  automigrationErrors: Record<FixId, ErrorMessage>;
+  automigrationErrors: Record<FixId, string>;
   /**
    * Core addons whose postinstall configuration must run AFTER dependencies are installed. A fix
    * that adds a core addon via `add(..., { skipPostinstall: true })` pushes the addon name here.
@@ -285,15 +277,15 @@ export type AutomigrationResult = {
 export async function runAutomigrationsForProjects(
   selectedAutomigrations: AutomigrationCheckResult[],
   options: MultiProjectRunAutomigrationOptions
-): Promise<Record<ConfigDir, AutomigrationResult>> {
+): Promise<Record<string, AutomigrationResult>> {
   const { dryRun, skipInstall, automigrations, yes } = options;
-  const projectResults: Record<ConfigDir, AutomigrationResult> = {};
+  const projectResults: Record<string, AutomigrationResult> = {};
 
   const applicableAutomigrations = selectedAutomigrations.filter((am) =>
     am.reports.every((rep) => rep.status !== 'not_applicable')
   );
   const projectAutomigrationResults = new Map<
-    ConfigDir,
+    string,
     {
       fix: Fix;
       project: ProjectAutomigrationData;
@@ -302,7 +294,6 @@ export async function runAutomigrationsForProjects(
     }[]
   >();
 
-  // selectedAutomigrations -> { fix, reports } -> reports (status passed or failed or skipped) -> project
   for (const automigration of automigrations) {
     for (const report of automigration.reports) {
       const { project, result, status } = report;
@@ -328,7 +319,11 @@ export async function runAutomigrationsForProjects(
     }
   }
 
-  // Run automigrations for each project
+  const { completed: completedBatches, failures: batchFailures } = await runFixesAcrossProjects(
+    selectedAutomigrations,
+    options
+  );
+
   let projectIndex = 0;
   for (const [configDir, projectAutomigration] of projectAutomigrationResults) {
     const countPrefix =
@@ -340,7 +335,6 @@ export async function runAutomigrationsForProjects(
 
     const projectName = shortenPath(project.configDir);
 
-    // If there isn't any applicable automigrations, we don't need to use the task log
     const taskLog =
       applicableAutomigrations.length > 0
         ? prompt.taskLog({
@@ -359,7 +353,7 @@ export async function runAutomigrationsForProjects(
             },
           };
     const fixResults: Record<FixId, FixStatus> = {};
-    const fixFailures: Record<FixId, ErrorMessage> = {};
+    const fixFailures: Record<FixId, string> = {};
     // Core addons added by fixes that must be configured after the upgrade installs dependencies.
     const addonsToPostinstall: string[] = [];
 
@@ -376,9 +370,6 @@ export async function runAutomigrationsForProjects(
         continue;
       }
 
-      // it is only skipped when the current automigration
-      // is either not selected by the user (for a particular proejct)
-      // therefore we need to check for configDir as well as fix id matches
       const hasBeenSelected = selectedAutomigrations.some(
         (am) =>
           am.fix.id === fix.id &&
@@ -386,6 +377,18 @@ export async function runAutomigrationsForProjects(
       );
       if (!hasBeenSelected) {
         fixResults[fix.id] = FixStatus.SKIPPED;
+        continue;
+      }
+
+      if (fix.runAcrossProjects) {
+        const failure = batchFailures.get(fix.id);
+        fixResults[fix.id] = failure ? FixStatus.FAILED : FixStatus.SUCCEEDED;
+        if (failure) {
+          fixFailures[fix.id] = failure;
+          taskLog.message(CLI_COLORS.error(`${logger.SYMBOLS.error} ${fix.id}`));
+        } else if (completedBatches.has(fix.id)) {
+          taskLog.message(CLI_COLORS.success(`${logger.SYMBOLS.success} ${fix.id}`));
+        }
         continue;
       }
 
@@ -452,7 +455,6 @@ export async function runAutomigrations(
   const requestedFeatures = resolveRequestedFeatures(options.features);
   const requestedFixIds = requestedFeatures.map(({ fixId }) => fixId);
 
-  // Prepare project data for automigrations
   const projectAutomigrationData: ProjectAutomigrationData[] = projects.map((project) => ({
     configDir: project.configDir,
     packageManager: project.packageManager,
@@ -473,7 +475,6 @@ export async function runAutomigrations(
         : `Detecting automigrations...`,
   });
 
-  // Collect all applicable automigrations across all projects
   const detectedAutomigrations = await collectAutomigrationsAcrossProjects({
     fixes: allFixes,
     projects: projectAutomigrationData,
@@ -484,7 +485,6 @@ export async function runAutomigrations(
     requestedFixIds,
   });
 
-  // Filter out automigrations that should run
   const successfulAutomigrations = detectedAutomigrations.filter((am) =>
     am.reports.some((report) => report.status === 'check_succeeded')
   );
@@ -502,13 +502,11 @@ export async function runAutomigrations(
       );
     });
 
-  // Prompt user to select which automigrations to run
   const selectedAutomigrations = await promptForAutomigrations(successfulAutomigrations, {
     dryRun: options.dryRun,
     yes: options.yes,
     preselectedIds: requestedFixIds,
   });
-  // Run selected automigrations for each project
   const automigrationResults = await runAutomigrationsForProjects(selectedAutomigrations, {
     automigrations: detectedAutomigrations,
     dryRun: options.dryRun,

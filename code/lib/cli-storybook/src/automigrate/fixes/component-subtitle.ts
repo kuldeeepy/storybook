@@ -5,8 +5,12 @@ import {
   ComponentSubtitleMigrationError,
   transformComponentSubtitleObject,
 } from './component-subtitle-transform.ts';
-import { createAnnotationTransformRunner } from '../helpers/annotation-transform.ts';
-import { crossesVersionBoundary } from '../helpers/versionBoundary.ts';
+import {
+  commitAnnotationTransformPlans,
+  createAnnotationTransformRunner,
+  type PreparedAnnotationTransform,
+} from '../helpers/annotation-transform.ts';
+import { isAtOrPastVersion } from '../helpers/versionBoundary.ts';
 
 export { transformPreviewSource, transformStorySource } from './component-subtitle-transform.ts';
 
@@ -36,6 +40,13 @@ const createRunner = ({
   return { ...runner, previewHasLegacySubtitle: () => previewHasLegacySubtitle };
 };
 
+const migrationError = (errors: ComponentSubtitleOptions['errors']) =>
+  new ComponentSubtitleMigrationError(
+    `Could not migrate parameters.componentSubtitle automatically:\n${errors
+      .map(({ file, message }) => `- ${file}: ${message}`)
+      .join('\n')}\nMove each value to parameters.docs.subtitle manually.`
+  );
+
 export const componentSubtitle: Fix<ComponentSubtitleOptions> = {
   id: 'component-subtitle',
   link: 'https://github.com/storybookjs/storybook/blob/next/MIGRATION.md#parameterscomponentsubtitle-removed',
@@ -43,8 +54,7 @@ export const componentSubtitle: Fix<ComponentSubtitleOptions> = {
   async check(options) {
     if (
       options.isUpgrade &&
-      (!options.beforeVersion ||
-        !crossesVersionBoundary(options.beforeVersion, options.storybookVersion, '11.0.0'))
+      (!options.beforeVersion || isAtOrPastVersion(options.beforeVersion, '11.0.0'))
     ) {
       return null;
     }
@@ -64,11 +74,23 @@ export const componentSubtitle: Fix<ComponentSubtitleOptions> = {
   async run(options) {
     const freshResult = await createRunner(options).run(options.dryRun);
     if (freshResult.errors.length > 0) {
-      throw new ComponentSubtitleMigrationError(
-        `Could not migrate parameters.componentSubtitle automatically:\n${freshResult.errors
-          .map(({ file, message }) => `- ${file}: ${message}`)
-          .join('\n')}\nMove each value to parameters.docs.subtitle manually.`
-      );
+      throw migrationError(freshResult.errors);
+    }
+  },
+
+  async runAcrossProjects(options) {
+    const plans: PreparedAnnotationTransform[] = [];
+    try {
+      for (const project of options) {
+        plans.push(await createRunner(project).prepare());
+      }
+      const errors = plans.flatMap(({ result }) => result.errors);
+      if (errors.length > 0) {
+        throw migrationError(errors);
+      }
+      await commitAnnotationTransformPlans(plans, options[0]?.dryRun);
+    } finally {
+      await Promise.all(plans.map(({ cleanUp }) => cleanUp()));
     }
   },
 };

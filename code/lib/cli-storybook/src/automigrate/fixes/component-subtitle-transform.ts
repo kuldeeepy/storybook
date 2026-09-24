@@ -59,7 +59,7 @@ export const transformComponentSubtitleObject: AnnotationObjectTransform<Inherit
   return objectInheritance;
 };
 
-export const transformAnnotationSource = (
+const transformAnnotationSource = (
   source: string,
   kind: AnnotationFileKind,
   inherited: Inheritance = noInheritance

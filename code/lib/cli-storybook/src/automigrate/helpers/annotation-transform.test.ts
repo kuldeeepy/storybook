@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,7 +7,10 @@ import type { CsfObject } from 'storybook/internal/csf-tools';
 
 import { fs, vol } from 'memfs';
 
-import { createAnnotationTransformRunner } from './annotation-transform.ts';
+import {
+  commitAnnotationTransformPlans,
+  createAnnotationTransformRunner,
+} from './annotation-transform.ts';
 
 vi.mock('node:fs/promises', { spy: true });
 
@@ -36,6 +39,7 @@ describe('annotation transform runner', () => {
     vi.mocked(readFile).mockImplementation(async (file) =>
       (await fs.promises.readFile(file.toString(), 'utf8')).toString()
     );
+    vi.mocked(realpath).mockImplementation(async (file) => file.toString());
     vi.mocked(writeFile).mockImplementation(async (file, data) => {
       await fs.promises.mkdir(dirname(file.toString()), { recursive: true });
       await fs.promises.writeFile(file.toString(), data.toString());
@@ -53,6 +57,7 @@ describe('annotation transform runner', () => {
 
   afterEach(() => {
     vi.mocked(readFile).mockRestore();
+    vi.mocked(realpath).mockRestore();
     vi.mocked(mkdtemp).mockRestore();
     vi.mocked(rm).mockRestore();
     vi.mocked(writeFile).mockRestore();
@@ -147,5 +152,35 @@ describe('annotation transform runner', () => {
     fs.writeFileSync(primaryStoryPath, "export default { parameters: { old: 'updated' } };");
     await runner.run();
     expect(fs.readFileSync(primaryStoryPath, 'utf8')).toMatch(/new.*updated/);
+  });
+
+  it('rejects incompatible project plans before writing a shared file', async () => {
+    vi.mocked(mkdtemp)
+      .mockResolvedValueOnce(resolve('.annotation-transform-staging-first'))
+      .mockResolvedValueOnce(resolve('.annotation-transform-staging-second'));
+    const first = createAnnotationTransformRunner({
+      storiesPaths: [primaryStoryPath],
+      initialInheritance: false,
+      transform: (object) => {
+        object.rename(['parameters', 'old'], 'first');
+        return false;
+      },
+    });
+    const second = createAnnotationTransformRunner({
+      storiesPaths: [primaryStoryPath],
+      initialInheritance: false,
+      transform: (object) => {
+        object.rename(['parameters', 'old'], 'second');
+        return false;
+      },
+    });
+    const before = fs.readFileSync(primaryStoryPath, 'utf8');
+    const plans = [await first.prepare(), await second.prepare()];
+
+    await expect(commitAnnotationTransformPlans(plans)).rejects.toThrow(
+      `Projects produced incompatible transforms for ${primaryStoryPath}`
+    );
+    expect(fs.readFileSync(primaryStoryPath, 'utf8')).toBe(before);
+    await Promise.all(plans.map(({ cleanUp }) => cleanUp()));
   });
 });

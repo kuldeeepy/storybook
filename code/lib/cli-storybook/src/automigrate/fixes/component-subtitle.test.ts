@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -244,6 +244,7 @@ describe('component-subtitle file processing', () => {
   afterEach(() => {
     vi.mocked(mkdtemp).mockRestore();
     vi.mocked(readFile).mockRestore();
+    vi.mocked(realpath).mockRestore();
     vi.mocked(rm).mockRestore();
     vi.mocked(writeFile).mockRestore();
   });
@@ -271,6 +272,7 @@ describe('component-subtitle file processing', () => {
         activeOperations--;
       }
     });
+    vi.mocked(realpath).mockImplementation(async (file) => file.toString());
     vi.mocked(writeFile).mockImplementation(async (file, data) => {
       expect(++activeOperations).toBe(1);
       try {
@@ -365,6 +367,20 @@ describe('component-subtitle file processing', () => {
     ).toBeNull();
   });
 
+  it.each(['0.0.0-pr-36129-sha-d9438e2', 'portal:', 'workspace:*'])(
+    'schedules the migration for an SB11 upgrade target %s',
+    async (storybookVersion) => {
+      expect(
+        await componentSubtitle.check({
+          ...options,
+          isUpgrade: true,
+          beforeVersion: '10.6.0',
+          storybookVersion,
+        })
+      ).toEqual({ filesToChange: [previewConfigPath, storyPath], errors: [] });
+    }
+  );
+
   it('uses current preview inheritance before writing either file', async () => {
     const result = await componentSubtitle.check(options);
     assert(result && componentSubtitle.run);
@@ -378,6 +394,68 @@ describe('component-subtitle file processing', () => {
     );
     expect(vol.toJSON()).toEqual(before);
   });
+
+  it('plans shared stories for every project before writing any project', async () => {
+    const secondPreviewConfigPath = resolve('second/.storybook/preview.ts');
+    fs.mkdirSync(dirname(secondPreviewConfigPath), { recursive: true });
+    fs.writeFileSync(
+      secondPreviewConfigPath,
+      "export default { parameters: { docs: { subtitle: 'Second preview' } } };"
+    );
+    vi.mocked(mkdtemp)
+      .mockResolvedValueOnce(resolve('.annotation-transform-staging-first'))
+      .mockResolvedValueOnce(resolve('.annotation-transform-staging-second'));
+    const before = vol.toJSON();
+    assert(componentSubtitle.runAcrossProjects);
+
+    await expect(
+      componentSubtitle.runAcrossProjects([
+        { ...options, result: { filesToChange: [], errors: [] } },
+        {
+          ...options,
+          configDir: resolve('second/.storybook'),
+          previewConfigPath: secondPreviewConfigPath,
+          result: { filesToChange: [], errors: [] },
+        },
+      ])
+    ).rejects.toThrow('An inherited parameters.docs.subtitle value can take precedence');
+    expect(vol.toJSON()).toEqual(before);
+  });
+
+  it.each([false, true])(
+    'commits compatible shared project plans with dryRun=%s',
+    async (dryRun) => {
+      const secondPreviewConfigPath = resolve('second/.storybook/preview.ts');
+      fs.mkdirSync(dirname(secondPreviewConfigPath), { recursive: true });
+      fs.writeFileSync(
+        secondPreviewConfigPath,
+        "export default { parameters: { componentSubtitle: 'Second preview' } };"
+      );
+      vi.mocked(mkdtemp)
+        .mockResolvedValueOnce(resolve('.annotation-transform-staging-first'))
+        .mockResolvedValueOnce(resolve('.annotation-transform-staging-second'));
+      const before = vol.toJSON();
+      assert(componentSubtitle.runAcrossProjects);
+
+      await componentSubtitle.runAcrossProjects([
+        { ...options, dryRun, result: { filesToChange: [], errors: [] } },
+        {
+          ...options,
+          configDir: resolve('second/.storybook'),
+          previewConfigPath: secondPreviewConfigPath,
+          dryRun,
+          result: { filesToChange: [], errors: [] },
+        },
+      ]);
+
+      if (dryRun) {
+        expect(vol.toJSON()).toEqual(before);
+      } else {
+        expect(fs.readFileSync(storyPath, 'utf8')).toContain('docs');
+        expect(fs.readFileSync(storyPath, 'utf8')).not.toContain('componentSubtitle');
+      }
+    }
+  );
 
   it('writes nothing when a later file becomes unsafe after check', async () => {
     const result = await componentSubtitle.check(options);
