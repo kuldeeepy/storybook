@@ -333,6 +333,14 @@ describe('component-subtitle file processing', () => {
     expect(vol.toJSON()).toEqual(before);
   });
 
+  it('ignores unrelated dynamic docs config without a legacy subtitle', async () => {
+    fs.writeFileSync(
+      storyPath,
+      "import docs from './docs'; export default { parameters: { docs } };"
+    );
+    expect(await componentSubtitle.check({ ...options, previewConfigPath: undefined })).toBeNull();
+  });
+
   it('uses current preview inheritance before writing either file', async () => {
     const result = await componentSubtitle.check(options);
     assert(result && componentSubtitle.run);

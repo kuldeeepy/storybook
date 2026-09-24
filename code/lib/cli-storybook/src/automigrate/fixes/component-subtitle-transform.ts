@@ -2,6 +2,11 @@ import { HandledError } from 'storybook/internal/common';
 import type { AnnotationFileKind, CsfObject } from 'storybook/internal/csf-tools';
 import { loadAnnotationFile } from 'storybook/internal/csf-tools';
 
+import {
+  transformAnnotationSource as transformSource,
+  type AnnotationObjectTransform,
+} from '../helpers/annotation-transform.ts';
+
 const legacyPath = ['parameters', 'componentSubtitle'];
 const subtitlePath = ['parameters', 'docs', 'subtitle'];
 
@@ -9,13 +14,6 @@ export class ComponentSubtitleMigrationError extends HandledError {}
 
 type Inheritance = { subtitleCanWin: boolean; legacyCanBeInherited?: boolean };
 const noInheritance: Inheritance = { subtitleCanWin: false };
-
-const checkDiagnostics = (file: ReturnType<typeof loadAnnotationFile>) => {
-  const [diagnostic] = file.mutationDiagnostics;
-  if (diagnostic) {
-    throw new ComponentSubtitleMigrationError(diagnostic.message);
-  }
-};
 
 const migrate = (object: CsfObject, inherited: Inheritance) => {
   const legacy = object.get(legacyPath);
@@ -58,6 +56,21 @@ export const previewSubtitleInheritance = (source: string): Inheritance => {
   };
 };
 
+export const transformComponentSubtitleObject: AnnotationObjectTransform<Inheritance> = (
+  object,
+  { kind, target, inherited }
+) => {
+  const root = target.kind === 'meta' || target.kind === 'config';
+  const objectInheritance = root
+    ? {
+        subtitleCanWin: Boolean(object.get(subtitlePath)) || inherited.subtitleCanWin,
+        legacyCanBeInherited: Boolean(object.get(legacyPath)) || inherited.legacyCanBeInherited,
+      }
+    : inherited;
+  migrate(object, root && kind === 'preview' ? noInheritance : inherited);
+  return objectInheritance;
+};
+
 export const transformAnnotationSource = (
   source: string,
   kind: AnnotationFileKind,
@@ -66,25 +79,13 @@ export const transformAnnotationSource = (
   if (!source.includes('componentSubtitle') && !inherited.legacyCanBeInherited) {
     return null;
   }
-  const file = loadAnnotationFile(source, kind);
-  const root = file.objects.find(
-    (object) => object.target.kind === 'meta' || object.target.kind === 'config'
-  );
-  const rootSubtitle = root?.get(subtitlePath);
-  const storyInheritance = {
-    subtitleCanWin: Boolean(rootSubtitle) || inherited.subtitleCanWin,
-    legacyCanBeInherited: Boolean(root?.get(legacyPath)) || inherited.legacyCanBeInherited,
-  };
-  if (root) {
-    migrate(root, kind === 'preview' ? noInheritance : inherited);
+  try {
+    return transformSource(source, kind, inherited, transformComponentSubtitleObject).code;
+  } catch (error) {
+    throw new ComponentSubtitleMigrationError(
+      error instanceof Error ? error.message : String(error)
+    );
   }
-  for (const object of file.objects) {
-    if (object !== root) {
-      migrate(object, storyInheritance);
-    }
-  }
-  checkDiagnostics(file);
-  return file.changed ? file.print() : null;
 };
 
 export const transformPreviewSource = (source: string) =>
