@@ -16,8 +16,8 @@ import addonThemes from '@storybook/addon-themes';
 import addonTest from '@storybook/addon-vitest';
 
 import addonPseudoStates from 'storybook-addon-pseudo-states';
-import { DocsContext as DocsContextProps, useArgs } from 'storybook/preview-api';
 import type { PreviewWeb } from 'storybook/preview-api';
+import { DocsContext as DocsContextProps, useArgs } from 'storybook/preview-api';
 import { expect, sb } from 'storybook/test';
 import {
   Global,
@@ -34,6 +34,11 @@ import { toHaveLiveRegion } from '../core/src/shared/utils/toHaveLiveRegion.ts';
 import * as templatePreview from '../core/template/stories/preview.ts';
 import '../renderers/react/template/components/index.js';
 import { isChromatic } from './isChromatic.ts';
+import * as vitestPreview from './vitest.preview.ts';
+
+// Typed locally: a `vite/client` reference here would leak Vite's `ImportMetaEnv` into every
+// package whose stories import this file (addon-a11y relies on `import.meta.env` being untyped).
+const isVitest = Boolean((import.meta as { env?: { VITEST?: unknown } }).env?.VITEST);
 
 sb.mock(import('@storybook/global'), { spy: true });
 
@@ -211,20 +216,6 @@ const loaders = [
       docsContext.attachCSFFile(csfFiles[0]);
     }
     return { docsContext };
-  },
-  // Under Vitest browser mode, drive interactions through Vitest's interactivity API instead of
-  // storybook/test's userEvent: https://vitest.dev/guide/browser/interactivity-api.html
-  async (context) => {
-    if (!(globalThis as { __vitest_browser__?: boolean }).__vitest_browser__) {
-      return;
-    }
-    const [{ userEvent: browserEvent }, { expect: vitestExpect }] = await Promise.all([
-      import('vitest/browser'),
-      import('vitest'),
-    ]);
-    // Unfortunately the types of userEvent don't match so we cast it
-    context.userEvent = browserEvent.setup() as unknown as typeof context.userEvent;
-    context.expect = vitestExpect as unknown as typeof expect;
   },
 ] as Loader[];
 
@@ -446,6 +437,7 @@ export default definePreview({
     addonTest(),
     addonPseudoStates(),
     templatePreview,
+    ...(isVitest ? [vitestPreview] : []),
   ],
   decorators,
   loaders,
