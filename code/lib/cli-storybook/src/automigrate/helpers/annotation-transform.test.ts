@@ -143,6 +143,22 @@ describe('annotation transform runner', () => {
       ],
     });
     expect(vol.toJSON()).toEqual(before);
+    expect(rm).toHaveBeenCalledWith(stagingPath, { force: true, recursive: true });
+  });
+
+  it('preserves string diagnostics with their source file', async () => {
+    const runner = createAnnotationTransformRunner({
+      storiesPaths: [primaryStoryPath],
+      initialInheritance: false,
+      transform: () => {
+        throw 'unsafe annotation';
+      },
+    });
+
+    expect(await runner.check()).toEqual({
+      filesToChange: [],
+      errors: [{ file: primaryStoryPath, message: 'unsafe annotation' }],
+    });
   });
 
   it('replans from current files when run follows check', async () => {
