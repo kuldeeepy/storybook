@@ -6,8 +6,7 @@ import type { Fix } from '../types.ts';
 import {
   ComponentSubtitleMigrationError,
   previewSubtitleInheritance,
-  transformPreviewSource,
-  transformStorySource,
+  transformAnnotationSource,
 } from './component-subtitle-transform.ts';
 
 export { transformPreviewSource, transformStorySource } from './component-subtitle-transform.ts';
@@ -34,10 +33,11 @@ export const componentSubtitle: Fix<ComponentSubtitleOptions> = {
         if (file === previewConfigPath) {
           inheritance = previewSubtitleInheritance(source);
         }
-        const transformed =
-          file === previewConfigPath
-            ? transformPreviewSource(source)
-            : transformStorySource(source, inheritance);
+        const transformed = transformAnnotationSource(
+          source,
+          file === previewConfigPath ? 'preview' : 'stories',
+          inheritance
+        );
         if (transformed) {
           applicable = true;
           filesToChange.push(file);
@@ -73,10 +73,11 @@ export const componentSubtitle: Fix<ComponentSubtitleOptions> = {
       : { subtitleCanWin: false };
     for (const file of filesToChange) {
       const source = await readFile(file, 'utf-8');
-      const transformed =
-        file === previewConfigPath
-          ? transformPreviewSource(source)
-          : transformStorySource(source, inheritance);
+      const transformed = transformAnnotationSource(
+        source,
+        file === previewConfigPath ? 'preview' : 'stories',
+        inheritance
+      );
       if (transformed) {
         await writeFile(file, transformed);
       }

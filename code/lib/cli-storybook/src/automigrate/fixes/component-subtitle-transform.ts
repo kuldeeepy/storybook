@@ -1,6 +1,6 @@
 import { HandledError } from 'storybook/internal/common';
-import type { ConfigFile, CsfFile, CsfObject } from 'storybook/internal/csf-tools';
-import { formatConfig, loadConfig, loadCsf, printCsf } from 'storybook/internal/csf-tools';
+import type { AnnotationFileKind, CsfObject } from 'storybook/internal/csf-tools';
+import { loadAnnotationFile } from 'storybook/internal/csf-tools';
 
 const legacyPath = ['parameters', 'componentSubtitle'];
 const subtitlePath = ['parameters', 'docs', 'subtitle'];
@@ -10,7 +10,7 @@ export class ComponentSubtitleMigrationError extends HandledError {}
 type Inheritance = { subtitleCanWin: boolean };
 const noInheritance: Inheritance = { subtitleCanWin: false };
 
-const checkDiagnostics = (file: ConfigFile | CsfFile) => {
+const checkDiagnostics = (file: ReturnType<typeof loadAnnotationFile>) => {
   const [diagnostic] = file.mutationDiagnostics;
   if (diagnostic) {
     throw new ComponentSubtitleMigrationError(diagnostic.message);
@@ -39,42 +39,43 @@ const migrate = (object: CsfObject, inherited: Inheritance) => {
 };
 
 export const previewSubtitleInheritance = (source: string): Inheritance => {
-  const preview = loadConfig(source).parse();
-  const subtitle = preview.get(subtitlePath);
+  const file = loadAnnotationFile(source, 'preview');
+  const subtitle = file.objects[0]?.get(subtitlePath);
   return {
-    subtitleCanWin: Boolean(subtitle) || preview.mutationDiagnostics.length > 0,
+    subtitleCanWin: Boolean(subtitle) || file.mutationDiagnostics.length > 0,
   };
 };
 
-export const transformPreviewSource = (source: string) => {
+export const transformAnnotationSource = (
+  source: string,
+  kind: AnnotationFileKind,
+  inherited: Inheritance = noInheritance
+) => {
   if (!source.includes('componentSubtitle')) {
     return null;
   }
-  const config = loadConfig(source).parse();
-  migrate(config, noInheritance);
-  checkDiagnostics(config);
-  return config.changed ? formatConfig(config) : null;
-};
-
-export const transformStorySource = (source: string, inherited: Inheritance = noInheritance) => {
-  if (!source.includes('componentSubtitle')) {
-    return null;
-  }
-  const csf = loadCsf(source, { makeTitle: (title) => title || 'default' }).parse();
-  const objects = csf.objects();
-  const meta = objects.find((object) => object.target.kind === 'meta');
-  const metaSubtitle = meta?.get(subtitlePath);
+  const file = loadAnnotationFile(source, kind);
+  const root = file.objects.find(
+    (object) => object.target.kind === 'meta' || object.target.kind === 'config'
+  );
+  const rootSubtitle = root?.get(subtitlePath);
   const storyInheritance = {
-    subtitleCanWin: metaSubtitle ? Boolean(metaSubtitle) : inherited.subtitleCanWin,
+    subtitleCanWin: Boolean(rootSubtitle) || inherited.subtitleCanWin,
   };
-  if (meta) {
-    migrate(meta, inherited);
+  if (root) {
+    migrate(root, kind === 'preview' ? noInheritance : inherited);
   }
-  for (const object of objects) {
-    if (object !== meta) {
+  for (const object of file.objects) {
+    if (object !== root) {
       migrate(object, storyInheritance);
     }
   }
-  checkDiagnostics(csf);
-  return csf.changed ? printCsf(csf).code : null;
+  checkDiagnostics(file);
+  return file.changed ? file.print() : null;
 };
+
+export const transformPreviewSource = (source: string) =>
+  transformAnnotationSource(source, 'preview');
+
+export const transformStorySource = (source: string, inherited: Inheritance = noInheritance) =>
+  transformAnnotationSource(source, 'stories', inherited);
