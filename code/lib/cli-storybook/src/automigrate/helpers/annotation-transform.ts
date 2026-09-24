@@ -1,4 +1,6 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import type { AnnotationFileKind, CsfObject, CsfObjectTarget } from 'storybook/internal/csf-tools';
 import { loadAnnotationFile } from 'storybook/internal/csf-tools';
@@ -27,7 +29,7 @@ type AnnotationTransformResult = {
   errors: Array<{ file: string; message: string }>;
 };
 
-type PlannedAnnotationWrite = { file: string; code: string };
+type PlannedAnnotationWrite = { file: string; stagedFile?: string };
 
 const messageFor = (error: Error | string) => (typeof error === 'string' ? error : error.message);
 
@@ -65,19 +67,29 @@ export const createAnnotationTransformRunner = <Inheritance>(
 ) => {
   const paths = pathsFor(options.previewConfigPath, options.storiesPaths);
 
-  const plan = async (): Promise<{
+  const plan = async (
+    stageOutput = false
+  ): Promise<{
     result: AnnotationTransformResult;
     writes: PlannedAnnotationWrite[];
+    cleanUp: () => Promise<void>;
   }> => {
     const writes: PlannedAnnotationWrite[] = [];
     const errors: AnnotationTransformResult['errors'] = [];
     let previewInheritance = options.initialInheritance;
+    let stagingDirectory: string | undefined;
+
+    const cleanUp = async () => {
+      if (stagingDirectory) {
+        await rm(stagingDirectory, { force: true, recursive: true });
+      }
+    };
 
     for (const file of paths) {
       try {
         const kind: AnnotationFileKind = file === options.previewConfigPath ? 'preview' : 'stories';
         const source = await readFile(file, 'utf-8');
-        if (!options.shouldTransform?.(source, kind, previewInheritance)) {
+        if (options.shouldTransform && !options.shouldTransform(source, kind, previewInheritance)) {
           continue;
         }
         const transformed = transformAnnotationSource(
@@ -90,13 +102,23 @@ export const createAnnotationTransformRunner = <Inheritance>(
           previewInheritance = transformed.inheritance;
         }
         if (transformed.code) {
-          writes.push({ file, code: transformed.code });
+          if (stageOutput) {
+            stagingDirectory ||= await mkdtemp(join(tmpdir(), 'storybook-automigrate-'));
+            const stagedFile = join(stagingDirectory, String(writes.length));
+            await writeFile(stagedFile, transformed.code);
+            writes.push({ file, stagedFile });
+          } else {
+            writes.push({ file });
+          }
         }
       } catch (error) {
         errors.push({ file, message: messageFor(error instanceof Error ? error : String(error)) });
       }
     }
-    return { result: { filesToChange: writes.map(({ file }) => file), errors }, writes };
+    if (errors.length > 0) {
+      await cleanUp();
+    }
+    return { result: { filesToChange: writes.map(({ file }) => file), errors }, writes, cleanUp };
   };
 
   return {
@@ -105,16 +127,22 @@ export const createAnnotationTransformRunner = <Inheritance>(
       return result.filesToChange.length > 0 || result.errors.length > 0 ? result : null;
     },
     async run(dryRun = false) {
-      const { result, writes } = await plan();
-      if (result.errors.length > 0) {
-        return result;
-      }
-      if (!dryRun) {
-        for (const { file, code } of writes) {
-          await writeFile(file, code);
+      const { result, writes, cleanUp } = await plan(true);
+      try {
+        if (result.errors.length > 0) {
+          return result;
         }
+        if (!dryRun) {
+          for (const { file, stagedFile } of writes) {
+            if (stagedFile) {
+              await writeFile(file, await readFile(stagedFile, 'utf-8'));
+            }
+          }
+        }
+        return result;
+      } finally {
+        await cleanUp();
       }
-      return result;
     },
   };
 };

@@ -101,6 +101,8 @@ export interface AutofixOptions extends Omit<AutofixOptionsFromCLI, 'packageMana
   previewConfigPath?: string;
   mainConfig: StorybookConfigRaw;
   storybookVersion: string;
+  /** Version installed before the upgrade. Only set when running as part of `storybook upgrade`. */
+  beforeVersion?: string;
   /** Whether the migration is part of an upgrade. */
   isUpgrade: boolean;
   isLatest: boolean;

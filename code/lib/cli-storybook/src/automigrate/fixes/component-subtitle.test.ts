@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFile, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -242,7 +242,9 @@ vi.mock('node:fs/promises', { spy: true });
 
 describe('component-subtitle file processing', () => {
   afterEach(() => {
+    vi.mocked(mkdtemp).mockRestore();
     vi.mocked(readFile).mockRestore();
+    vi.mocked(rm).mockRestore();
     vi.mocked(writeFile).mockRestore();
   });
   const previewConfigPath = resolve('.storybook/preview.ts');
@@ -272,10 +274,15 @@ describe('component-subtitle file processing', () => {
     vi.mocked(writeFile).mockImplementation(async (file, data) => {
       expect(++activeOperations).toBe(1);
       try {
+        await fs.promises.mkdir(dirname(file.toString()), { recursive: true });
         await fs.promises.writeFile(file.toString(), data.toString());
       } finally {
         activeOperations--;
       }
+    });
+    vi.mocked(mkdtemp).mockResolvedValue(resolve('.annotation-transform-staging'));
+    vi.mocked(rm).mockImplementation(async (path, options) => {
+      await fs.promises.rm(path.toString(), options);
     });
     vol.fromJSON({
       [previewConfigPath]: "export default { parameters: { componentSubtitle: 'Preview' } };",
@@ -391,6 +398,43 @@ describe('component-subtitle file processing', () => {
     assert(result && componentSubtitle.run);
     await expect(componentSubtitle.run({ ...options, result })).rejects.toThrow();
     expect(vol.toJSON()).toEqual(before);
+  });
+
+  it('does not migrate stories when preview parameters cannot be inspected', async () => {
+    fs.writeFileSync(
+      previewConfigPath,
+      "import parameters from './parameters'; export default { parameters };"
+    );
+    const before = vol.toJSON();
+    const result = await componentSubtitle.check(options);
+
+    expect(result?.errors).toEqual([expect.objectContaining({ file: previewConfigPath })]);
+    assert(result && componentSubtitle.run);
+    await expect(componentSubtitle.run({ ...options, result })).rejects.toThrow();
+    expect(vol.toJSON()).toEqual(before);
+  });
+
+  it('ignores an uninspectable preview when no subtitle migration is needed', async () => {
+    fs.writeFileSync(
+      previewConfigPath,
+      "import parameters from './parameters'; export default { parameters };"
+    );
+    fs.writeFileSync(storyPath, 'export default { parameters: { docs: {} } };');
+
+    expect(await componentSubtitle.check(options)).toBeNull();
+  });
+
+  it('reports an unsafe preview legacy subtitle', async () => {
+    fs.writeFileSync(
+      previewConfigPath,
+      "export default { parameters: { ...shared, componentSubtitle: 'Legacy' } };"
+    );
+    fs.writeFileSync(storyPath, 'export default { parameters: { docs: {} } };');
+
+    expect(await componentSubtitle.check(options)).toEqual({
+      filesToChange: [],
+      errors: [expect.objectContaining({ file: previewConfigPath })],
+    });
   });
 
   it('uses the preview transformer when rereading a preview file', async () => {

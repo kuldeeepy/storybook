@@ -1,6 +1,5 @@
 import { HandledError } from 'storybook/internal/common';
 import type { AnnotationFileKind, CsfObject } from 'storybook/internal/csf-tools';
-import { loadAnnotationFile } from 'storybook/internal/csf-tools';
 
 import {
   transformAnnotationSource as transformSource,
@@ -43,17 +42,6 @@ const migrate = (object: CsfObject, inherited: Inheritance) => {
     object.group(['parameters', 'docs'], ['componentSubtitle']);
     object.rename(['parameters', 'docs', 'componentSubtitle'], 'subtitle');
   }
-};
-
-export const previewSubtitleInheritance = (source: string): Inheritance => {
-  const file = loadAnnotationFile(source, 'preview');
-  const root = file.objects[0];
-  const subtitle = root?.get(subtitlePath);
-  const legacy = root?.get(legacyPath);
-  return {
-    subtitleCanWin: Boolean(subtitle) || file.mutationDiagnostics.length > 0,
-    legacyCanBeInherited: Boolean(legacy),
-  };
 };
 
 export const transformComponentSubtitleObject: AnnotationObjectTransform<Inheritance> = (

@@ -19,16 +19,21 @@ const createRunner = ({
   previewConfigPath,
   storiesPaths,
 }: Pick<CheckOptions, 'previewConfigPath' | 'storiesPaths'>) => {
-  return createAnnotationTransformRunner({
+  let previewHasLegacySubtitle = false;
+  const runner = createAnnotationTransformRunner({
     previewConfigPath,
     storiesPaths,
     initialInheritance: { subtitleCanWin: false },
-    shouldTransform: (source, kind, inherited) =>
-      source.includes('componentSubtitle') ||
-      (kind === 'preview' && source.includes('subtitle')) ||
-      inherited.legacyCanBeInherited === true,
+    shouldTransform: (source, kind, inherited) => {
+      if (kind === 'preview') {
+        previewHasLegacySubtitle = source.includes('componentSubtitle');
+        return true;
+      }
+      return source.includes('componentSubtitle') || inherited.legacyCanBeInherited === true;
+    },
     transform: transformComponentSubtitleObject,
   });
+  return { ...runner, previewHasLegacySubtitle: () => previewHasLegacySubtitle };
 };
 
 export const componentSubtitle: Fix<ComponentSubtitleOptions> = {
@@ -43,7 +48,13 @@ export const componentSubtitle: Fix<ComponentSubtitleOptions> = {
     ) {
       return null;
     }
-    return createRunner(options).check();
+    const runner = createRunner(options);
+    const result = await runner.check();
+    return result?.filesToChange.length ||
+      result?.errors.some(({ file }) => file !== options.previewConfigPath) ||
+      runner.previewHasLegacySubtitle()
+      ? result
+      : null;
   },
 
   prompt() {
